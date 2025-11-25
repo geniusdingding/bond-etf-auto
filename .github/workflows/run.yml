@@ -26,7 +26,21 @@ jobs:
         run: python main.py
 
       - name: Upload result artifact
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: result-file
           path: output/科创债ETF_累计结果.xlsx
+
+      - name: Send Feishu notification
+        if: success()
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts"
+          curl -X POST "${{ secrets.FEISHU_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+                  \"msg_type\": \"text\",
+                  \"content\": {
+                    \"text\": \"✅ 科创债折算率已更新\n📎 下载链接：$DOWNLOAD_URL\"
+                  }
+                }"
