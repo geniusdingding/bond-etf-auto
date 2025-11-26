@@ -114,4 +114,8 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     df_result.to_excel(OUTPUT_FILE, index=False)
 
+    # ✅ 新增 —— 自动 git add & commit（GitHub Actions 环境用）
+    os.system(f"git add {OUTPUT_FILE}")
+    os.system('git commit -m "update result" || echo "no changes"')
+
     print(f"\n🎉 全部处理完成！累计结果已更新 → {OUTPUT_FILE}\n")

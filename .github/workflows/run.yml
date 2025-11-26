@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}   # ✅ 必须加这个，否则无法 push
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -25,22 +27,29 @@ jobs:
       - name: Run processing script
         run: python main.py
 
-      - name: Upload result artifact
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: result-file
-          path: output/科创债ETF_累计结果.xlsx
+      # ✅ 新增：设置 Git 身份（让 Actions 能 commit）
+      - name: Set git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # ✅ 新增：把最新结果提交回仓库
+      - name: Push updated result
+        run: |
+          git add output/科创债ETF_累计结果.xlsx
+          git commit -m "update result" || echo "no changes"
+          git push
+
+      # ✅ 修改：用 raw 直链发送飞书通知
       - name: Send Feishu notification
         if: success()
         run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts"
+          DOWNLOAD_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/output/科创债ETF_累计结果.xlsx"
           curl -X POST "${{ secrets.FEISHU_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d "{
                   \"msg_type\": \"text\",
                   \"content\": {
-                    \"text\": \"✅ 科创债折算率已更新\n📎 下载链接：$DOWNLOAD_URL\"
+                    \"text\": \"✅ 科创债折算率已更新\n📎 最新文件：$DOWNLOAD_URL\"
                   }
                 }"
