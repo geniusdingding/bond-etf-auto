@@ -3,11 +3,14 @@ import io
 import re
 import pandas as pd
 from datetime import datetime
+import requests
+import json
 
 INPUT_DIR = "input"
 OUTPUT_DIR = "output"
 ETF_PATH = os.path.join("config", "科创债名单.xlsx")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "科创债ETF_累计结果.xlsx")
+WEBHOOK_URL = "你的飞书 webhook 填这里"  # ✅ 修改为你的真实 webhook
 
 
 def extract_date_from_filename(filename: str) -> str:
@@ -92,12 +95,39 @@ def sort_columns(df):
     return df[fixed_cols + date_cols]
 
 
+def send_to_feishu(file_name, summary_text=None):
+    date = datetime.now().strftime("%Y-%m-%d")
+    raw_url = f"https://raw.githubusercontent.com/geniusdingding/bond-etf-auto/main/output/{file_name}"
+
+    data = {
+        "msg_type": "post",
+        "content": {
+            "post": {
+                "zh_cn": {
+                    "title": "科创债折算率更新",
+                    "content": [
+                        [
+                            {"tag": "text", "text": summary_text or "✅ 科创债折算率已更新"}
+                        ],
+                        [
+                            {"tag": "a", "text": "📎 点击下载最新文件", "href": raw_url}
+                        ]
+                    ]
+                }
+            }    }
+
+    headers = {"Content-Type": "application/json"}
+    try:
+        resp = requests.post(WEBHOOK_URL, data=json.dumps(data), headers=headers)
+        print("✅ 飞书推送成功:", resp.text)
+    except Exception as e:
+        print("❌ 飞书推送失败:", e)
+
 
 if __name__ == "__main__":
     # 读取ETF名单
     df_template = pd.read_excel(ETF_PATH)
     df_template = df_template[["基金代码", "基金简称"]]
-
 
     # 初始化或读取累计文件
     df_result = load_or_init_result(df_template)
@@ -114,7 +144,29 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     df_result.to_excel(OUTPUT_FILE, index=False)
 
-    # ✅ 新增 —— 自动 git add & commit（GitHub Actions 环境用）
+    print(f"✅ 已生成文件 → {OUTPUT_FILE}")
+
+    # ✅ 新增——生成当期数据 summary 并推送
+
+    # ✅ 计算最新日期列
+    date_cols = [c for c in df_result.columns if c not in ["基金代码", "基金简称"]]
+    latest_col = sorted(date_cols)[-1]
+
+    # ✅ 过滤掉无数据的基金
+    valid_series = df_result[latest_col].dropna()
+    count = len(valid_series)
+
+    # ✅ 计算平均折算率
+    avg_rate = round(valid_series.mean(), 2)
+
+    # ✅ 生成 summary 文本
+    summary = f"✅ {latest_col} 科创债折算率更新\n共有 {count} 只科创债ETF可质押\n平均折算率为 {avg_rate}%"
+
+    # ✅ 飞书推送 summary
+    send_to_feishu("科创债ETF_累计结果.xlsx", summary)
+    send_to_feishu("科创债ETF_累计结果.xlsx")
+
+    # ✅ GitHub Actions 自动提交
     os.system(f"git add {OUTPUT_FILE}")
     os.system('git commit -m "update result" || echo "no changes"')
 
