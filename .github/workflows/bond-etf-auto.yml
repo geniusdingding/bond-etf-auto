@@ -6,59 +6,81 @@ on:
       - 'input/**'
   workflow_dispatch:
 
+# 必须添加写入权限，否则 push 会报 403 错误
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. 检出 Main 分支代码
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          ref: main           # 明确指定拉取 main 分支的代码
+          fetch-depth: 0      # 获取全部历史，方便跨分支操作
 
+      # 2. 设置 Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      # 3. 🌟【关键步骤】把昨天的数据从 auto-updates 分支“偷”回来
+      # 如果不加这一步，你的脚本每次都是从零开始，无法“累计”！
+      - name: Restore History Data
+        run: |
+          # 尝试获取 auto-updates 分支的最新状态
+          git fetch origin auto-updates || echo "First run, branch not found."
+          
+          # 将那个分支里的 Excel 文件覆盖到当前目录
+          # 如果文件不存在（第一次运行），则忽略错误
+          git checkout origin/auto-updates -- "output/科创债ETF_累计结果.xlsx" || echo "No history file found, starting fresh."
+
+      # 4. 安装依赖
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 5. 运行脚本 (此时本地既有 Main 的代码，也有昨天的 Excel)
       - name: Run processing script
         run: python main.py
 
-      # ✅ Read push_enabled safely (NO heredoc, NO syntax errors)
+      # 6. 读取 config.json (使用安全写法)
       - name: Read push config
         id: cfg
         run: |
           VALUE=$(python -c "import json;print(json.load(open('config.json'))['push_enabled'])")
           echo "push_enabled=$VALUE" >> $GITHUB_OUTPUT
 
-      # ✅ Git identity only when pushing
+      # 7. 配置 Git 身份
       - name: Set git identity
         if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # ✅ Commit ONLY if output changed — NO rebase, NO pull
+      # 8. 提交结果
       - name: Commit result if changed
         if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
+          # 检查 output 文件夹下的 Excel 是否有变化
           if git diff --quiet "output/科创债ETF_累计结果.xlsx"; then
             echo "✅ No changes — skipping commit"
             exit 0
           fi
+          
+          # 只添加 Excel 文件，不添加其他代码变动（保持代码纯净）
           git add "output/科创债ETF_累计结果.xlsx"
-          git commit -m "Auto update bond ETF rates"
+          git commit -m "Auto update bond ETF rates: $(date +'%Y-%m-%d')"
 
-      # ✅ Push safely — NEVER touch main
+      # 9. 🌟【关键步骤】强制推送到 auto-updates 分支
+      # 加上 --force 是为了解决 non-fast-forward 报错
+      # 因为我们已经把旧数据“偷”回来并更新了，所以覆盖旧分支是安全的
       - name: Push to auto-updates branch
         if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
-          git push origin HEAD:refs/heads/auto-updates
-
-      - name: Done
-        run: echo "✅ Workflow finished — main remains untouched"
+          git push origin HEAD:refs/heads/auto-updates --force
