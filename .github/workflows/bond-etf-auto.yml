@@ -25,37 +25,40 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install jq
 
       - name: Run processing script
         run: python main.py
 
+      # ✅ Read push_enabled safely (NO heredoc, NO syntax errors)
       - name: Read push config
         id: cfg
         run: |
-          VALUE=$(jq -r '.push_enabled' config.json)
+          VALUE=$(python -c "import json;print(json.load(open('config.json'))['push_enabled'])")
           echo "push_enabled=$VALUE" >> $GITHUB_OUTPUT
 
+      # ✅ Git identity only when pushing
       - name: Set git identity
-        if: steps.cfg.outputs.push_enabled == 'true'
+        if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # ✅ Commit ONLY if output changed — NO rebase, NO pull
       - name: Commit result if changed
-        if: steps.cfg.outputs.push_enabled == 'true'
+        if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
-          if git diff --quiet output/科创债ETF_累计结果.xlsx; then
-            echo "✅ No changes, skip commit"
+          if git diff --quiet "output/科创债ETF_累计结果.xlsx"; then
+            echo "✅ No changes — skipping commit"
             exit 0
           fi
-          git add output/科创债ETF_累计结果.xlsx
-          git commit -m "update result"
+          git add "output/科创债ETF_累计结果.xlsx"
+          git commit -m "Auto update bond ETF rates"
 
+      # ✅ Push safely — NEVER touch main
       - name: Push to auto-updates branch
-        if: steps.cfg.outputs.push_enabled == 'true'
+        if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
           git push origin HEAD:auto-updates
 
       - name: Done
-        run: echo "✅ Workflow completed (main branch untouched)"
+        run: echo "✅ Workflow finished — main remains untouched"
