@@ -1,20 +1,6 @@
 @echo off
-cd /d %~dp0
-
-set DATE=%date:~0,4%-%date:~5,2%-%date:~8,2%
-
-echo =====================================
-echo 🔁 自动提交并推送 (%DATE%) ...
-echo =====================================
-
-git add .
-
-git commit -m "update on %DATE%" 2>nul
-
+echo Adding input files...
+git add input
+git commit -m "update input" || echo No changes to commit
 git push
-
-echo =====================================
-echo ✅ 已成功推送！
-echo =====================================
-
-pause
+echo Done.
