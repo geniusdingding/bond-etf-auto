@@ -1,7 +1,7 @@
 name: Bond ETF Auto Process
 
 permissions:
-  contents: write   # ✅ 允许 workflow 写入仓库
+  contents: write
 
 on:
   push:
@@ -17,8 +17,9 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}   # ✅ 使用可写 token
-          persist-credentials: true           # ✅ 保持凭证用于 push
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+          fetch-depth: 0        # ✅ 必须加，允许 push 回仓库
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -33,8 +34,11 @@ jobs:
 
       - name: Set git identity
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Pull latest before push   # ✅ 防止 push 被拒
+        run: git pull --rebase origin main || true
 
       - name: Push updated result
         run: |
@@ -42,15 +46,3 @@ jobs:
           git commit -m "update result" || echo "no changes"
           git push
 
-      - name: Send Feishu notification
-        if: success()
-        run: |
-          DOWNLOAD_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/output/科创债ETF_累计结果.xlsx"
-          curl -X POST "${{ secrets.FEISHU_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-                  \"msg_type\": \"text\",
-                  \"content\": {
-                    \"text\": \"✅ 科创债折算率已更新\n📎 最新文件：$DOWNLOAD_URL\"
-                  }
-                }"
