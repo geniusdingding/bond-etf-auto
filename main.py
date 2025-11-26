@@ -114,7 +114,9 @@ def send_to_feishu(file_name, summary_text=None):
                         ]
                     ]
                 }
-            }    }
+            }
+        }
+    }
 
     headers = {"Content-Type": "application/json"}
     try:
@@ -122,6 +124,7 @@ def send_to_feishu(file_name, summary_text=None):
         print("✅ 飞书推送成功:", resp.text)
     except Exception as e:
         print("❌ 飞书推送失败:", e)
+
 
 
 if __name__ == "__main__":
