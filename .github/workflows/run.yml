@@ -1,5 +1,8 @@
 name: Bond ETF Auto Process
 
+permissions:
+  contents: write   # ✅ 允许 workflow 写入仓库
+
 on:
   push:
     paths:
@@ -14,7 +17,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}   # ✅ 必须加这个，否则无法 push
+          token: ${{ secrets.GITHUB_TOKEN }}   # ✅ 使用可写 token
+          persist-credentials: true           # ✅ 保持凭证用于 push
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -27,20 +31,17 @@ jobs:
       - name: Run processing script
         run: python main.py
 
-      # ✅ 新增：设置 Git 身份（让 Actions 能 commit）
       - name: Set git identity
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # ✅ 新增：把最新结果提交回仓库
       - name: Push updated result
         run: |
           git add output/科创债ETF_累计结果.xlsx
           git commit -m "update result" || echo "no changes"
           git push
 
-      # ✅ 修改：用 raw 直链发送飞书通知
       - name: Send Feishu notification
         if: success()
         run: |
