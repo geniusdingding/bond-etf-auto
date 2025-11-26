@@ -1,8 +1,5 @@
 name: Bond ETF Auto Process
 
-permissions:
-  contents: write
-
 on:
   push:
     paths:
@@ -16,10 +13,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -34,16 +27,5 @@ jobs:
       - name: Run processing script
         run: python main.py
 
-      - name: Set git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Pull latest before push
-        run: git pull --rebase origin main || true
-
-      - name: Push updated result
-        run: |
-          git add output/科创债ETF_累计结果.xlsx
-          git commit -m "update result" || echo "no changes"
-          git push
+      - name: Done
+        run: echo "✅ Workflow completed (no git push)"
