@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0   # ✅ 必须保留，否则无法 push
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -42,19 +42,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit result
+      - name: Commit result if changed
         if: steps.cfg.outputs.push_enabled == 'true'
         run: |
+          if git diff --quiet output/科创债ETF_累计结果.xlsx; then
+            echo "✅ No changes, skip commit"
+            exit 0
+          fi
           git add output/科创债ETF_累计结果.xlsx
-          git commit -m "update result" || echo "nothing to commit"
+          git commit -m "update result"
 
-      - name: Pull latest before push
+      - name: Push to auto-updates branch
         if: steps.cfg.outputs.push_enabled == 'true'
-        run: git pull --rebase --autostash origin main
-
-      - name: Push updated results
-        if: steps.cfg.outputs.push_enabled == 'true'
-        run: git push origin main
+        run: |
+          git push origin HEAD:auto-updates
 
       - name: Done
-        run: echo "✅ Workflow completed"
+        run: echo "✅ Workflow completed (main branch untouched)"
