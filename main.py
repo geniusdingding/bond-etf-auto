@@ -41,7 +41,6 @@ def extract_date_from_filename(filename: str) -> str:
 def group_files_by_date():
     """
     扫描 input 目录，按日期将文件分组
-    返回格式: { '2025/11/26': ['input/上海...xls', 'input/深圳...xls'], ... }
     """
     files_map = collections.defaultdict(list)
     
@@ -75,7 +74,6 @@ def read_file_data(file_path):
     """
     filename = os.path.basename(file_path)
     
-    # === 1. 判断交易所格式 ===
     if "深圳" in filename:
         header_row = 4
         print(f"   → 读取深圳文件 (Header=5): {filename}")
@@ -83,48 +81,36 @@ def read_file_data(file_path):
         header_row = 2
         print(f"   → 读取上海文件 (Header=3): {filename}")
 
-    # === 2. 读取文件内容 ===
     with open(file_path, "rb") as f:
         file_stream = io.BytesIO(f.read())
 
     try:
-        # 尝试读 Excel
         df = pd.read_excel(file_stream, header=header_row)
     except:
-        # 失败则尝试读 CSV
         file_stream.seek(0)
         try:
             df = pd.read_csv(file_stream, header=header_row, sep=None, engine="python", encoding='gbk')
         except:
             df = pd.read_csv(file_stream, header=header_row, sep=None, engine="python", encoding='utf-8')
 
-    # === 3. 动态寻找列名 ===
     cols = df.columns.tolist()
     col_code = next((c for c in cols if '代码' in str(c)), None)
     col_rate = next((c for c in cols if '折算' in str(c)), None)
 
     if not col_code or not col_rate:
-        # 兜底策略
         col_code = cols[0]
         col_rate = cols[2] if len(cols) > 2 else cols[1]
 
-    # === 4. 清洗与格式统一 ===
     df = df.dropna(subset=[col_code])
-    
-    # 转换代码为数字
     df[col_code] = pd.to_numeric(df[col_code], errors="coerce")
     df = df.dropna(subset=[col_code])
     df[col_code] = df[col_code].astype("Int64")
-    
-    # 转换折算率为数字
     df[col_rate] = pd.to_numeric(df[col_rate], errors="coerce")
     
-    # ⚡️⚡️⚡️ 核心修正：深圳数据 x100 ⚡️⚡️⚡️
     if "深圳" in filename:
         print(f"     ⚡️ 检测到深圳数据，执行 x100 修正")
         df[col_rate] = df[col_rate] * 100
     
-    # 四舍五入并转为整数
     df[col_rate] = df[col_rate].round(0).astype("Int64")
     
     return dict(zip(df[col_code], df[col_rate]))
@@ -145,48 +131,37 @@ def process_date_group(date_str, file_list, df_result):
     return df_result
 
 def sort_columns(df):
+    """
+    列排序：
+    1. 固定列在左
+    2. 日期列按【从新到旧】排序 (reverse=True)
+    """
     fixed_cols = ["基金代码", "基金简称"]
-    date_cols = sorted([c for c in df.columns if c not in fixed_cols])
+    # 找出日期列，并倒序排列（最近的日期在最左边）
+    date_cols = sorted([c for c in df.columns if c not in fixed_cols], reverse=True)
     return df[fixed_cols + date_cols]
 
-def send_to_feishu(file_name, summary_text=None, df_preview=None):
+def send_to_feishu(file_name, title_text, content_text):
     """
-    发送飞书消息，增加数据预览 (df_preview)
+    发送飞书消息：
+    file_name: 下载的文件名
+    title_text: 消息标题（包含日期）
+    content_text: 消息正文（包含统计和明细）
     """
+    # 构造 GitHub Raw 链接
+    # 注意：这里假设您的分支名是 auto-updates
     raw_url = f"https://raw.githubusercontent.com/geniusdingding/bond-etf-auto/auto-updates/output/{file_name}"
-    
-    # 构造预览文本 (抽查几个关键ETF)
-    preview_text = ""
-    if df_preview is not None:
-        cols = df_preview.columns.tolist()
-        date_cols = [c for c in cols if c not in ["基金代码", "基金简称"]]
-        if date_cols:
-            latest_date = date_cols[-1]
-            # 这里的代码对应: 511120(广发), 159400(平安), 159200(富国)
-            target_codes = [511120, 159400, 159200]
-            
-            # 筛选
-            preview_rows = df_preview[df_preview['基金代码'].isin(target_codes)]
-            
-            if not preview_rows.empty:
-                preview_text = "\n\n🔎 关键ETF抽查 (验证整数):\n"
-                for _, row in preview_rows.iterrows():
-                    val = row[latest_date]
-                    val_str = str(val) if pd.notna(val) else "无数据"
-                    preview_text += f"• {row['基金简称']}: {val_str}\n"
-
-    # 构造完整文案
-    full_content = (summary_text or "✅ 数据已更新") + preview_text
     
     data = {
         "msg_type": "post",
         "content": {
             "post": {
                 "zh_cn": {
-                    "title": "📊 科创债折算率自动更新",
+                    "title": title_text,
                     "content": [
-                        [{"tag": "text", "text": full_content}],
-                        [{"tag": "a", "text": "📎 点击下载最新累计表格 (Git同步中)", "href": raw_url}]
+                        [{"tag": "text", "text": content_text}],
+                        [{"tag": "text", "text": "\n--------------------\n"}],
+                        [{"tag": "a", "text": "📎 点击下载最新累计表格 (需GitHub同步)", "href": raw_url}]
                     ]
                 }
             }
@@ -200,10 +175,8 @@ def send_to_feishu(file_name, summary_text=None, df_preview=None):
         print("❌ 飞书推送失败:", e)
 
 if __name__ == "__main__":
-    # 1. 读取开关配置
     push_enabled = load_push_config()
 
-    # 2. 读取名单模板
     if not os.path.exists(ETF_PATH):
         if os.path.exists("科创债名单.xlsx"):
              ETF_PATH = "科创债名单.xlsx"
@@ -212,7 +185,6 @@ if __name__ == "__main__":
     
     df_template = pd.read_excel(ETF_PATH)[["基金代码", "基金简称"]]
 
-    # 3. 加载或新建结果表
     if os.path.exists(OUTPUT_FILE):
         print(f"✅ 加载历史文件: {OUTPUT_FILE}")
         df_result = pd.read_excel(OUTPUT_FILE)
@@ -220,43 +192,59 @@ if __name__ == "__main__":
         print("✅ 初始化新文件")
         df_result = df_template.copy()
 
-    # 4. 扫描文件并处理
     grouped_files = group_files_by_date()
     
-    # 如果没有文件，脚本结束，不发消息
     if not grouped_files:
         print("⚠️ 没有需要处理的文件，脚本结束")
     else:
         for date_str, files in grouped_files.items():
             df_result = process_date_group(date_str, files, df_result)
 
-        # 5. 保存结果
+        # 1. 排序：最近的日期在左边
         df_result = sort_columns(df_result)
+        
+        # 2. 保存结果
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         df_result.to_excel(OUTPUT_FILE, index=False)
         print(f"🎉 累计结果已保存: {OUTPUT_FILE}")
 
-        # 6. 生成摘要并推送 (这里不再做 Git 提交，只负责通知)
+        # 3. 生成详细摘要
         cols = df_result.columns.tolist()
         date_cols = [c for c in cols if c not in ["基金代码", "基金简称"]]
         
         if date_cols:
-            latest_date = date_cols[-1]
-            valid_data = df_result[latest_date].dropna()
-            count = len(valid_data)
-            avg_rate = round(valid_data.mean(), 2) if count > 0 else 0
+            # 因为我们已经 sort(reverse=True) 了，所以第0个就是最新的日期
+            latest_date = date_cols[0]
             
-            summary = (f"📅 更新日期: {latest_date}\n"
-                       f"📈 可质押ETF数量: {count} 只\n"
-                       f"💰 平均折算率: {avg_rate}")
+            # 筛选出最新这一天有数据的所有行
+            # .dropna() 自动过滤掉 NaN 的行
+            day_data = df_result[['基金简称', latest_date]].dropna()
             
-            print(f"\n摘要信息:\n{summary}\n")
+            count = len(day_data)
+            
+            if count > 0:
+                avg_rate = day_data[latest_date].mean()
+                
+                # 构造标题
+                msg_title = f"📊 科创债ETF折算率 ({latest_date})"
+                
+                # 构造统计信息
+                msg_content = f"📈 参与质押ETF: {count} 家\n💰 平均折算率: {round(avg_rate, 2)}\n\n📋 当日明细:"
+                
+                # 循环罗列所有有数据的 ETF
+                for _, row in day_data.iterrows():
+                    name = row['基金简称']
+                    rate = int(row[latest_date]) # 转整数显示
+                    msg_content += f"\n• {name}: {rate}"
+            else:
+                msg_title = f"📊 科创债ETF折算率 ({latest_date})"
+                msg_content = "⚠️ 当日暂无匹配数据"
+
+            print(f"\n摘要信息:\n{msg_title}\n{msg_content}\n")
 
             if push_enabled:
-                # 传入 df_result 以生成预览
-                send_to_feishu("科创债ETF_累计结果.xlsx", summary, df_result)
+                # 发送飞书
+                send_to_feishu("科创债ETF_累计结果.xlsx", msg_title, msg_content)
                 print("🚀 已执行飞书推送")
             else:
                 print("✅ push_enabled=False → 跳过飞书推送")
-
-    # 7. Git 操作已完全移除，交由 YAML 接管
