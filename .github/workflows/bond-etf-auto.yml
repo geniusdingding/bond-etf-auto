@@ -58,7 +58,7 @@ jobs:
       - name: Push to auto-updates branch
         if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
-          git push origin HEAD:auto-updates
+          git push origin HEAD:refs/heads/auto-updates
 
       - name: Done
         run: echo "✅ Workflow finished — main remains untouched"
