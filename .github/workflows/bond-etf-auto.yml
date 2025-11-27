@@ -63,12 +63,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      
-      # 8. 提交结果 (确保这里只有一次 git commit)
+      # 8. 提交结果 (修复版：只写一次提交，逻辑清晰)
       - name: Commit result
         if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
+          # 1. 强制添加 output 文件夹下的所有 Excel 文件
+          # 这样无论是新文件还是修改文件，都能被 Git 捕获
           git add "output/*.xlsx"
+          
+          # 2. 尝试提交
+          # || echo ... 的作用是：如果没变化导致提交失败，打印一句话并让流程继续，不要报错停止
           git commit -m "Auto update bond ETF rates: $(date +'%Y-%m-%d')" || echo "⚠️ No changes to commit"
 
       # 9. 🌟【关键步骤】强制推送到 auto-updates 分支
