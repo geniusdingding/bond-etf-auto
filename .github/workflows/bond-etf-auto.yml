@@ -63,25 +63,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # 8. 提交结果
+      
+      # 8. 提交结果 (确保这里只有一次 git commit)
       - name: Commit result
         if: ${{ steps.cfg.outputs.push_enabled == 'true' }}
         run: |
-          # 强制添加 output 文件夹下的所有 Excel 文件
           git add "output/*.xlsx"
-          
-          # 直接提交。如果真的没变化，git commit 会报错，|| echo ... 会捕获这个错误让流程继续
-          # 这样既能处理"新文件"，也能处理"修改文件"
-          git commit -m "Auto update bond ETF rates: $(date +'%Y-%m-%d')" || echo "⚠️ No changes to commit" |
-          # 检查 output 文件夹下的 Excel 是否有变化
-          if git diff --quiet "output/科创债ETF_累计结果.xlsx"; then
-            echo "✅ No changes — skipping commit"
-            exit 0
-          fi
-          
-          # 只添加 Excel 文件，不添加其他代码变动（保持代码纯净）
-          git add "output/科创债ETF_累计结果.xlsx"
-          git commit -m "Auto update bond ETF rates: $(date +'%Y-%m-%d')"
+          git commit -m "Auto update bond ETF rates: $(date +'%Y-%m-%d')" || echo "⚠️ No changes to commit"
 
       # 9. 🌟【关键步骤】强制推送到 auto-updates 分支
       # 加上 --force 是为了解决 non-fast-forward 报错
